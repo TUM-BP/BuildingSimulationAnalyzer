@@ -14,17 +14,17 @@ function app
 % Adapt the settings below to the properties of your simulation.
 % Afterwards, execute the script by pressing 'F5' or by clicking the button
 % 'Run' in the Matlab programming environment. Depending on the settings
-% you will be prompted to select the input file, the sheet name inside of
-% the input file as well as the data column, which should be analyzed. If
-% the setting 'useIdealTemperature' is set to 'true', an additional file
-% specifying the weather conditions must be selected. Weather conditions
-% are assumed to be stored as .prn file there the first column represents
-% the passed time in hours relative to the beginning of the simulation
-% (usually the beginning of the year) and the second column shows the
-% environment temperature in degree Celsius. Once all files are selected,
-% several windows will show up presenting you the analysis results.
-% Additionally, most of the results are written into an Excel file, which
-% can be used for further data exploration.
+% you will be prompted to select the input file (.xlxs (Excel file)), the
+% sheet name inside of the input file as well as the data column, which
+% should be analyzed. If the setting 'useIdealTemperature' is set to
+% 'true', an additional file specifying the weather conditions must be
+% selected. Weather conditions are assumed to be stored as .prn file there
+% the first column represents the passed time in hours relative to the
+% beginning of the simulation (usually the beginning of the year) and the
+% second column shows the environment temperature in degree Celsius. Once
+% all files are selected, several windows will show up presenting you the
+% analysis results. Additionally, most of the results are written into an
+% Excel file, which can be used for further data exploration.
 
 % Note: As of May 2021, IDA ICE doesn't correctly handle daylight saving
 % time. This leads to an offset in the data, which can be visualized by
@@ -42,7 +42,9 @@ startDate = simulationStart;
 endDate = simulationStart;
 
 % Sheet name in the input file, if empty a selection dialog is shown
-sheetName = ""; % common values: "Indoor air quality measures_ Ac" or "Air and operative temperatures"
+% example: 
+% "Indoor air quality measures_ Ac" or "Air and operative temperatures"
+sheetName = ""; 
 
 % Column name in the data sheet in input file, if empty a selection dialog
 % is shown
@@ -61,12 +63,21 @@ unit = '°C'; % 'ppm'
 % outside air, else set to 0
 relativeLevel = 0; 
 
-% Schedule (if complete days should be taken into account use [0 24])
+% Schedule representing time of interest, often usage time
+% (if complete days should be taken into account use [0 24])
 % Note: Currently, only full hours are supported!
 MoFr = [7 18];
 Saturday = [];
 Sunday = [];
 
+% Holidays without usage
+% Input format: Matrix, first column represents the start and the
+% second column the end of each holiday. 
+% example:
+% holidays = [
+%     "2009-12-24 00:00:00" "2009-12-31 23:59:00";
+%     ...
+% ]
 holidays = []
 
 % holidays = [
@@ -116,7 +127,7 @@ f.Name = strcat(type, ' Evaluation');
 movegui(f,'center');
 
 % Open input file
-filePath = selectFile('*.xlsx');
+filePath = selectFile('*.xlsx', 'Select input data file (.xlsx)');
 
 if sheetName == ""
     sheetName = selectOption(sheetnames(filePath), 'Select data sheet');
@@ -133,7 +144,7 @@ querypoints = 0:sampleInterval/60:max(T.Time);
 outsideTemperatur = zeros(1, length(querypoints)) + threshold;
 if useIdealTemperature
     if climateFile == ""
-        climateFile = selectFile('*.prn');
+        climateFile = selectFile('*.prn', 'Select climate file (.prn)');
     end
     % Read outside temperature
     outsideTemperatur = readmatrix(climateFile, 'FileType', 'text');
@@ -159,7 +170,9 @@ end
 % data table format
 % | weekdayNum | weekdayStr | daylight saving time (dst) | dates | year |
 % month | day | hour | minute | sec | threshold |
-data = [table(weekdayNum.',string(weekdayStr), isdst(datesTime), dates.', 'VariableNames', {'weekdayNum', 'weekdayStr', 'dst','dates'}),array2table(datevec(datenum(datesTime)+datenum(hours(isdst(datesTime)))), 'VariableNames', {'Year', 'Month', 'Day', 'Hour', 'Minute','Sec'}),table(values),table(outsideTemperatur.', 'VariableNames', {'threshold'})];
+data = [table(weekdayNum.',string(weekdayStr), isdst(datesTime), dates.', 'VariableNames', {'weekdayNum', 'weekdayStr', 'dst','dates'}), ...
+    array2table(datevec(datenum(datesTime)+datenum(hours(isdst(datesTime)))), 'VariableNames', {'Year', 'Month', 'Day', 'Hour', 'Minute','Sec'}), ...
+    table(values),table(outsideTemperatur.', 'VariableNames', {'threshold'})];
 
 data = filterData(data, simulationStart, startDate, endDate, MoFr, Saturday, Sunday, holidays, DateInputFormat);
 
@@ -228,8 +241,10 @@ if isfile(exportFilename)
    if strcmp(answer, 'Cancel')
        return;
    end
+   % Remove old file, otherwise data can mix
+   delete(exportFilename);
 end
-    
+
 T = table(xlabels.', hist.', 'VariableNames', {'Range', 'Hours'});
 writetable(T, exportFilename, 'Sheet', 'Hours');
 [meanValues, minValues, maxValues, valueCount] = grpstats(data.values, data.Month, {'mean','min','max','numel'}, 'Alpha', 0.25);
@@ -248,15 +263,38 @@ end
 
 m = 1:12;
 if useIdealTemperature
-    varNames = {'month', 'usage time [h]', 'h > lower acceptance', 'lower acceptance', 'lower acceptance squared', 'h > average comfort','average comfort', 'average comfort squared', 'h > upper acceptance','upper acceptance', 'upper acceptance squared'};
-    T = table(m.', usageTimeMonths, hMonthsDIN20, unithMonthsDIN20, unith2MonthsDIN20, hMonthsDIN22, unithMonthsDIN22, unith2MonthsDIN22, hMonthsDIN24, unithMonthsDIN24, unith2MonthsDIN24, 'VariableNames', varNames);
+    varNames = {'month', ...
+        'usage time [h]', 'h < lower acceptance [h]', 'h < lower acceptance [%]', ...
+        'h >= lower acceptance [h]', 'h >= lower acceptance [%]', 'lower acceptance', 'lower acceptance squared', ...
+        'h >= average comfort [h]', 'h >= average comfort [%]', 'average comfort', 'average comfort squared', ...
+        'h >= upper acceptance [h]', 'h >= upper acceptance [%]', 'upper acceptance', 'upper acceptance squared'};
+    T = table(m.', ...
+        usageTimeMonths, usageTimeMonths - hMonthsDIN20, toPerc(usageTimeMonths, usageTimeMonths - hMonthsDIN20), ...
+        hMonthsDIN20, toPerc(usageTimeMonths, hMonthsDIN20), unithMonthsDIN20, unith2MonthsDIN20, ...
+        hMonthsDIN22, toPerc(usageTimeMonths, hMonthsDIN22), unithMonthsDIN22, unith2MonthsDIN22, ...
+        hMonthsDIN24, toPerc(usageTimeMonths, hMonthsDIN24), unithMonthsDIN24, unith2MonthsDIN24, ...
+        'VariableNames', varNames);
     writetable(T, exportFilename, 'Sheet', 'DIN EN 15251 2012-12');
-    varNames = {'month', 'usage time [h]', 'h > lower 80% acceptance', 'lower 80% acceptance', 'lower 80% acceptance squared', 'h > average comfort', 'average comfort', 'average comfort squared', 'h > upper 80% acceptance', 'upper 80% acceptance', 'upper 80% acceptance squared'};
-    T = table(m.', usageTimeMonths, hMonthsASHRAE143, unithMonthsASHRAE143, unith2MonthsASHRAE143, hMonthsASHRAE178, unithMonthsASHRAE178, unith2MonthsASHRAE178, hMonthsASHRAE213, unithMonthsASHRAE213, unith2MonthsASHRAE213, 'VariableNames', varNames);
+    varNames = {'month', ...
+        'usage time [h]', 'h < lower 80% acceptance [h]', 'h < lower 80% acceptance [%]', ...
+        'h >= lower 80% acceptance [h]', 'h >= lower 80% acceptance [%]', 'lower 80% acceptance', 'lower 80% acceptance squared', ...
+        'h >= average comfort [h]', 'h >= average comfort [%]', 'average comfort', 'average comfort squared', ...
+        'h >= upper 80% acceptance [h]', 'h >= upper 80% acceptance [%]', 'upper 80% acceptance', 'upper 80% acceptance squared'};
+    T = table(m.', ...
+        usageTimeMonths, usageTimeMonths - hMonthsASHRAE143, toPerc(usageTimeMonths, usageTimeMonths - hMonthsASHRAE143), ...
+        hMonthsASHRAE143, toPerc(usageTimeMonths, hMonthsASHRAE143), unithMonthsASHRAE143, unith2MonthsASHRAE143, ...
+        hMonthsASHRAE178, toPerc(usageTimeMonths, hMonthsASHRAE178), unithMonthsASHRAE178, unith2MonthsASHRAE178, ...
+        hMonthsASHRAE213, toPerc(usageTimeMonths, hMonthsASHRAE213), unithMonthsASHRAE213, unith2MonthsASHRAE213, ...
+        'VariableNames', varNames);
     writetable(T, exportFilename, 'Sheet', 'ASHRAE 55-2020');
 else
-    varNames = {'Month', 'usage time [h]', 'h > threshold', 'delta CO2 hours','delta2 CO2 hours'};
-    T = table(m.', usageTimeMonths, hMonths, unithMonths, unith2Months, 'VariableNames', varNames);
+    varNames = {'month', ...
+        'usage time [h]', 'h < threshold [h]', 'h < threshold [%]', ...
+        'h >= threshold [h]', 'h >= threshold [%]', 'delta CO2 hours','delta2 CO2 hours'};
+    T = table(m.', ...
+        usageTimeMonths, usageTimeMonths - hMonths, toPerc(usageTimeMonths, usageTimeMonths - hMonths), ...
+        hMonths, toPerc(usageTimeMonths, hMonths), unithMonths, unith2Months, ...
+        'VariableNames', varNames);
     writetable(T, exportFilename, 'Sheet', 'CO2 hours');
 end
 end
@@ -265,8 +303,12 @@ function convertedDate = convertDate(input, format)
 convertedDate = datenum(datetime(input, 'InputFormat', format, 'TimeZone', 'Europe/Zurich'));
 end
 
-function filePath = selectFile(extension)
-[file, path] = uigetfile(extension);
+function percentage = toPerc(total, part)
+percentage = (100 * part) ./ total;
+end
+
+function filePath = selectFile(extension, title)
+[file, path] = uigetfile(extension, title);
 if isequal(file, 0)
     disp('Canceled');
 else
@@ -347,7 +389,7 @@ hMonths = zeros(12,1);
 unithMonths = zeros(12,1);
 unith2Months = zeros(12,1);
 for m = 1:12
-    sel = data.values > data.threshold & data.Month == m;
+    sel = data.values >= data.threshold & data.Month == m;
     sel_size = height(data.values(sel));
     if(sel_size ~= 0)
         hMonths(m) = sel_size / (60 / sampleInterval);
@@ -373,7 +415,7 @@ unith2Months = zeros(12,1);
 
 dynThreshold = arrayfun(@(e) func(e),data.threshold);
 for m = 1:12
-    sel = data.values > dynThreshold & data.Month == m;
+    sel = data.values >= dynThreshold & data.Month == m;
     sel_size = height(data.values(sel));
     if(sel_size ~= 0)
         hMonths(m) = sel_size / (60 / sampleInterval);
@@ -398,7 +440,7 @@ end
 end
 
 % ASHRAE Standard 55-2020
-% https://www.ashrae.org/technical-resources/standards-and-guidelines/read-only-versions-of-ashrae-standards 
+% https://www.ashrae.org/technical-resources/standards-and-guidelines/read-only-versions-of-ashrae-standards
 % lower 80% acceptance base: 14.3 [°C]
 % avg. comfort base: 17.8 [°C]
 % upper 80% acceptance base: 21.3 [°C]
