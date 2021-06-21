@@ -139,6 +139,14 @@ if columnName == ""
     columnName = char(selectOption(T.Properties.VariableNames, 'Select data column'));
 end
 
+if ~any(strcmp('Time', T.Properties.VariableNames))
+   if any(strcmp('Zeit', T.Properties.VariableNames))
+       T.Properties.VariableNames{'Zeit'} = 'Time';
+   else
+       error('Error: Input data sheet does not contain column named "Time" or "Zeit"');
+   end
+end
+
 querypoints = 0:sampleInterval/60:max(T.Time);
 
 outsideTemperatur = zeros(1, length(querypoints)) + threshold;
