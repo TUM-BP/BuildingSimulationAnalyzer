@@ -53,7 +53,7 @@ columnName = ""; % common values: "CO2_Ppm_vol_";
 % Use a threshold value depending on the environment temperature
 useIdealTemperature = true; % false
 % .prn file for climate conditions
-climateFile = ""
+climateFile = "";
 
 % Type and unit of analyzation (used for data labels)
 type = 'degree'; % 'CO2'
@@ -78,7 +78,7 @@ Sunday = [];
 %     "2009-12-24 00:00:00" "2009-12-31 23:59:00";
 %     ...
 % ]
-holidays = []
+holidays = [];
 
 % holidays = [
 %     "2009-12-24 00:00:00" "2009-12-31 23:59:00";
@@ -105,7 +105,7 @@ threshold = 1000;
 % Name of the exported Excel file
 exportFilename = 'results.xlsx';
 
-interpolationMethod = 'spline'; % 'spline', 'linear'
+interpolationMethod = 'linear'; % 'spline', 'linear'
 sampleInterval = 6; % Minutes
 
 %% Program %%
